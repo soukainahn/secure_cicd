@@ -1,0 +1,52 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  build-test-scan:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Build Docker image
+        run: docker build -t secure-cicd:latest ./app
+
+      - name: Install Trivy
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y wget
+          wget https://github.com/aquasecurity/trivy/releases/latest/download/trivy_0.48.0_Linux-64bit.deb
+          sudo dpkg -i trivy_0.48.0_Linux-64bit.deb
+
+      - name: Scan image with Trivy
+        run: trivy image secure-cicd:latest
+
+      - name: Login to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | docker login ghcr.io -u $GITHUB_ACTOR --password-stdin
+
+      - name: Tag image
+        run: docker tag secure-cicd:latest ghcr.io/${{ github.repository_owner }}/secure-cicd:latest
+
+      - name: Push image
+        run: docker push ghcr.io/${{ github.repository_owner }}/secure-cicd:latest
+
+  deploy:
+    needs: build-test-scan
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v0.1.6
+        with:
+          host: ${{ secrets.SERVER_IP }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd secure_cicd
+            docker compose pull
+            docker compose down
+            docker compose up -d

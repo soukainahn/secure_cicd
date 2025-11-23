@@ -1,0 +1,7 @@
+version: "3.9"
+
+services:
+  app:
+    image: ghcr.io/YOUR_USERNAME/secure-cicd:latest
+    container_name: securecicd_app
+    restart: unless-stopped
